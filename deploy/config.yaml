@@ -1,10 +1,11 @@
 # Public-deployment-safe application configuration.
-# Do not put api_key here. Set OPENAI_API_KEY in Render's environment variables.
+# Do not put api_key here. Set the DeepSeek API key as OPENAI_API_KEY in Render.
 providers:
-  - name: openai
-    protocol: openai
-    base_url: https://api.openai.com/v1
-    model: gpt-4.1-mini
+  - name: deepseek
+    protocol: openai-compat
+    base_url: https://api.deepseek.com
+    model: deepseek-v4-flash
+    context_window: 1000000
 
 # Keep this demo conservative: tools request confirmation from the web UI.
 permission_mode: default
