@@ -1,0 +1,9 @@
+.git
+.gradle
+.idea
+.mewcode
+.tmp
+build
+out
+tcm_research
+*.jar

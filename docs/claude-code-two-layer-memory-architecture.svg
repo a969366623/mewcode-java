@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .title { font: 700 28px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17365d; }
+      .subtitle { font: 400 15px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #527399; }
+      .section { font: 700 18px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17365d; }
+      .node { font: 600 16px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #ffffff; }
+      .small { font: 400 13px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #ffffff; }
+      .label { font: 500 13px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #356aa0; }
+      .note { font: 400 13px "Microsoft YaHei", "PingFang SC", sans-serif; fill: #466785; }
+      .box { fill: #3973ad; stroke: #2f659d; stroke-width: 1.5; }
+      .lightbox { fill: #ffffff; stroke: #78a7cf; stroke-width: 1.5; }
+      .group { fill: #f4f8fc; stroke: #8bb5d7; stroke-width: 1.5; stroke-dasharray: 5 5; }
+      .flow { fill: none; stroke: #3973ad; stroke-width: 2.2; marker-end: url(#arrow); }
+      .memory-flow { fill: none; stroke: #4b8cc4; stroke-width: 2; stroke-dasharray: 6 5; marker-end: url(#arrow-dashed); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3973ad"/>
+    </marker>
+    <marker id="arrow-dashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4b8cc4"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#224b73" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="900" fill="#ffffff"/>
+  <text x="700" y="45" text-anchor="middle" class="title">企业级 Claude Code 两层记忆架构</text>
+  <text x="700" y="73" text-anchor="middle" class="subtitle">基于 MewCode：MEMORY.md 轻量索引 + 独立记忆正文，按需召回而非全量注入</text>
+
+  <!-- 主体容器 -->
+  <rect x="65" y="100" width="1270" height="730" rx="10" fill="#eaf2f9" stroke="#5d93bf" stroke-width="2"/>
+  <text x="95" y="136" class="section">MewCode Agent Memory</text>
+  <rect x="1040" y="116" width="260" height="30" rx="15" fill="#d9e8f5" stroke="#7ca6c8"/>
+  <text x="1170" y="136" text-anchor="middle" class="note">tenant_id · user_id · project_id · ACL</text>
+
+  <!-- 在线召回主流程 -->
+  <text x="505" y="150" text-anchor="middle" class="section">在线召回</text>
+  <rect x="410" y="168" width="190" height="52" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="505" y="200" text-anchor="middle" class="node">用户问题</text>
+
+  <path d="M 505 220 L 505 247" class="flow"/>
+  <rect x="410" y="248" width="190" height="58" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="505" y="274" text-anchor="middle" class="node">Agent Runtime</text>
+  <text x="505" y="295" text-anchor="middle" class="small">当前会话上下文</text>
+
+  <path d="M 505 306 L 505 333" class="flow"/>
+  <rect x="410" y="334" width="190" height="62" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="505" y="360" text-anchor="middle" class="node">MemoryRecall</text>
+  <text x="505" y="382" text-anchor="middle" class="small">构造查询与访问范围</text>
+
+  <path d="M 505 396 L 505 485" class="flow"/>
+  <rect x="410" y="486" width="190" height="62" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="505" y="512" text-anchor="middle" class="node">上下文组装</text>
+  <text x="505" y="534" text-anchor="middle" class="small">相关正文 · 新鲜度 · Token 预算</text>
+
+  <path d="M 505 548 L 505 575" class="flow"/>
+  <rect x="410" y="576" width="190" height="52" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="505" y="608" text-anchor="middle" class="node">LLM 生成回答</text>
+
+  <!-- 两层记忆区 -->
+  <rect x="690" y="168" width="580" height="460" rx="8" class="group"/>
+  <text x="980" y="198" text-anchor="middle" class="section">两层长期记忆</text>
+
+  <!-- Layer 1 -->
+  <rect x="735" y="218" width="490" height="116" rx="8" fill="#f8fbfe" stroke="#79a7cc" stroke-width="1.5"/>
+  <text x="760" y="247" class="section">第一层：MEMORY.md 轻量索引</text>
+  <rect x="760" y="263" width="205" height="50" rx="6" class="box"/>
+  <text x="862" y="284" text-anchor="middle" class="node">用户级索引</text>
+  <text x="862" y="304" text-anchor="middle" class="small">user · feedback</text>
+  <rect x="990" y="263" width="205" height="50" rx="6" class="box"/>
+  <text x="1092" y="284" text-anchor="middle" class="node">项目级索引</text>
+  <text x="1092" y="304" text-anchor="middle" class="small">project · reference</text>
+
+  <!-- Selector -->
+  <path d="M 980 334 L 980 360" class="flow"/>
+  <text x="996" y="352" class="label">名称 + 描述</text>
+  <rect x="860" y="361" width="240" height="58" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="980" y="386" text-anchor="middle" class="node">Selector LLM</text>
+  <text x="980" y="407" text-anchor="middle" class="small">选择 Top-K 相关记忆</text>
+
+  <!-- Layer 2 -->
+  <path d="M 980 419 L 980 445" class="flow"/>
+  <text x="996" y="439" class="label">按需读取</text>
+  <rect x="735" y="446" width="490" height="145" rx="8" fill="#f8fbfe" stroke="#79a7cc" stroke-width="1.5"/>
+  <text x="760" y="476" class="section">第二层：独立记忆正文</text>
+  <rect x="760" y="494" width="205" height="70" rx="6" class="box"/>
+  <text x="862" y="520" text-anchor="middle" class="node">用户记忆文件</text>
+  <text x="862" y="543" text-anchor="middle" class="small">偏好 · 反馈 · 纠错</text>
+  <rect x="990" y="494" width="205" height="70" rx="6" class="box"/>
+  <text x="1092" y="520" text-anchor="middle" class="node">项目记忆文件</text>
+  <text x="1092" y="543" text-anchor="middle" class="small">约束 · 经验 · 参考知识</text>
+  <text x="980" y="582" text-anchor="middle" class="note">name · description · type · source · version · confidence · TTL</text>
+
+  <!-- 召回连线：独立水平通道，无交叉 -->
+  <path d="M 600 365 L 655 365 L 655 288 L 735 288" class="memory-flow"/>
+  <text x="620" y="350" class="label">扫描索引</text>
+  <path d="M 735 529 L 655 529 L 655 517 L 600 517" class="memory-flow"/>
+  <text x="620" y="550" class="label">返回正文</text>
+
+  <!-- 异步写入治理 -->
+  <line x1="105" y1="660" x2="1295" y2="660" stroke="#87aac7" stroke-width="1"/>
+  <text x="110" y="690" class="section">异步写入与治理</text>
+
+  <rect x="110" y="714" width="160" height="62" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="190" y="740" text-anchor="middle" class="node">会话完成</text>
+  <text x="190" y="762" text-anchor="middle" class="small">Conversation</text>
+
+  <path d="M 270 745 L 319 745" class="memory-flow"/>
+  <rect x="320" y="704" width="185" height="82" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="412" y="732" text-anchor="middle" class="node">MemoryManager.extract</text>
+  <text x="412" y="754" text-anchor="middle" class="small">提取记忆候选</text>
+  <text x="412" y="773" text-anchor="middle" class="small">过滤临时任务信息</text>
+
+  <path d="M 505 745 L 554 745" class="memory-flow"/>
+  <rect x="555" y="704" width="185" height="82" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="647" y="730" text-anchor="middle" class="node">质量与安全策略</text>
+  <text x="647" y="752" text-anchor="middle" class="small">租户隔离 · 敏感信息过滤</text>
+  <text x="647" y="773" text-anchor="middle" class="small">去重 · 冲突检测 · 置信度</text>
+
+  <path d="M 740 745 L 789 745" class="memory-flow"/>
+  <rect x="790" y="704" width="170" height="82" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="875" y="730" text-anchor="middle" class="node">写入第二层</text>
+  <text x="875" y="752" text-anchor="middle" class="small">新增或版本化更新</text>
+  <text x="875" y="773" text-anchor="middle" class="small">保留来源与 TTL</text>
+
+  <path d="M 960 745 L 1009 745" class="memory-flow"/>
+  <rect x="1010" y="704" width="150" height="82" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="1085" y="730" text-anchor="middle" class="node">刷新第一层</text>
+  <text x="1085" y="752" text-anchor="middle" class="small">一行摘要指针</text>
+  <text x="1085" y="773" text-anchor="middle" class="small">限制索引大小</text>
+
+  <path d="M 1160 745 L 1199 745" class="memory-flow"/>
+  <rect x="1200" y="704" width="105" height="82" rx="6" class="box" filter="url(#shadow)"/>
+  <text x="1252" y="730" text-anchor="middle" class="node">整理</text>
+  <text x="1252" y="752" text-anchor="middle" class="small">合并 · 修正</text>
+  <text x="1252" y="773" text-anchor="middle" class="small">淘汰 · 重建</text>
+
+  <!-- 写入结果关联到两层，沿右侧独立竖向通道 -->
+  <path d="M 875 704 L 875 676 L 1310 676 L 1310 529 L 1225 529" class="memory-flow"/>
+  <path d="M 1085 704 L 1085 688 L 1325 688 L 1325 288 L 1225 288" class="memory-flow"/>
+
+  <text x="105" y="815" class="note">存储实现：当前项目使用 Markdown；企业部署可替换为数据库/对象存储，但“两层逻辑模型”和按需加载流程保持不变。</text>
+</svg>

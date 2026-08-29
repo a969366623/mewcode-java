@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mewcode-remote
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REMOTE_UI_REQUIRE_AUTH
+        value: "true"
+      - key: REMOTE_UI_USERNAME
+        sync: false
+      - key: REMOTE_UI_PASSWORD
+        sync: false
