@@ -9,7 +9,7 @@ container. It is not suitable for GitHub Pages or Vercel's static hosting.
 2. In Render, select **New > Blueprint** and choose the repository. Render reads
    `render.yaml` and creates the `mewcode-remote` web service.
 3. Set these secret environment variables in the service settings:
-   - `DEEPSEEK_API_KEY`: your DeepSeek API key.
+   - `OPENAI_API_KEY`: your DeepSeek API key (used by the `openai-compat` provider).
    - `REMOTE_UI_USERNAME`: a username shared only with approved reviewers.
    - `REMOTE_UI_PASSWORD`: a strong, unique password.
 4. Deploy. The service uses Render's assigned `PORT` automatically. Open the
