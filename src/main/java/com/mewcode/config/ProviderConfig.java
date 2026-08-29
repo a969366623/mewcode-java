@@ -121,6 +121,11 @@ public class ProviderConfig {
 
     public String resolvedApiKey() {
         if (apiKey != null && !apiKey.isEmpty()) return apiKey;
+        if ("openai-compat".equals(protocol)
+                && baseUrl != null && baseUrl.contains("api.deepseek.com")) {
+            String deepSeekKey = System.getenv("DEEPSEEK_API_KEY");
+            if (deepSeekKey != null && !deepSeekKey.isEmpty()) return deepSeekKey;
+        }
         String envVar = ENV_KEY_MAP.get(protocol);
         if (envVar == null) return "";
         String val = System.getenv(envVar);

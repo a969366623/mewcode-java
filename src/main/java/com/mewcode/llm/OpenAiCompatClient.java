@@ -51,7 +51,7 @@ public class OpenAiCompatClient implements LlmClient {
         if (key.isEmpty()) {
             throw new LlmException.AuthenticationException(
                     "API key not found for openai-compat provider '" + cfg.getName()
-                            + "'. Set it in .mewcode/config.yaml or via OPENAI_API_KEY env var.");
+                            + "'. Set it in .mewcode/config.yaml or via DEEPSEEK_API_KEY/OPENAI_API_KEY env var.");
         }
         this.apiKey = key;
         this.baseUrl = cfg.getBaseUrl().replaceAll("/+$", "");

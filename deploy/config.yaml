@@ -1,5 +1,5 @@
 # Public-deployment-safe application configuration.
-# Do not put api_key here. Set the DeepSeek API key as OPENAI_API_KEY in Render.
+# Do not put api_key here. Set DEEPSEEK_API_KEY in Render.
 providers:
   - name: deepseek
     protocol: openai-compat
