@@ -41,10 +41,13 @@ import com.mewcode.tui.dialog.AskUserDialog;
 import com.mewcode.worktree.WorktreeManager;
 
 import io.javalin.Javalin;
+import io.javalin.http.UnauthorizedResponse;
 import io.javalin.websocket.WsContext;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -57,12 +60,14 @@ import java.util.concurrent.locks.ReentrantLock;
 public class RemoteServer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Set<String> DEMO_TOOLS = Set.of("ReadFile", "Glob", "Grep");
 
     // ── 配置 ──────────────────────────────────────────────────────────
     private final List<ProviderConfig> providers;
     private final List<McpServerConfig> mcpConfigs;
     private final List<HookConfig> hookConfigs;
     private final String addr;
+    private final DemoUsageGuard demoGuard = DemoUsageGuard.fromEnvironment();
 
     // ── WebSocket 连接池 ──────────────────────────────────────────────
     private final ReentrantLock connLock = new ReentrantLock();
@@ -130,13 +135,19 @@ public class RemoteServer {
         // 解析监听地址（格式 ":18888" 或 "0.0.0.0:18888"）
         int port = parsePort(addr);
 
-        Javalin app = Javalin.create()
+        Javalin app = Javalin.create();
+        configureBasicAuth(app);
+        app.get("/health", ctx -> ctx.result("ok"))
                 .get("/", ctx -> {
                     ctx.contentType("text/html; charset=utf-8");
                     ctx.result(WebContent.INDEX_HTML);
                 })
                 .ws("/ws", ws -> {
                     ws.onConnect(ctx -> {
+                        if (!authorizationMatches(ctx.header("Authorization"))) {
+                            ctx.closeSession(1008, "Authentication required");
+                            return;
+                        }
                         connections.add(ctx);
                         // 新连接推送 session 信息
                         broadcast(Map.of(
@@ -170,6 +181,10 @@ public class RemoteServer {
     private void initAgent() {
         String workDir = System.getProperty("user.dir");
         ProviderConfig providerCfg = providers.get(0);
+        if (demoGuard.enabled()) {
+            providerCfg.setMaxOutputTokens(Math.min(
+                    providerCfg.resolvedMaxOutputTokens(), demoGuard.maxOutputTokens()));
+        }
 
         // 记忆管理
         memoryManager = new MemoryManager(workDir);
@@ -227,6 +242,12 @@ public class RemoteServer {
         registry.register(new com.mewcode.tool.SyntheticOutputTool());
         registry.register(new com.mewcode.teams.TeamTools.SendMessageTool(teamManager, "lead"));
 
+        if (demoGuard.enabled()) {
+            for (var tool : registry.listTools()) {
+                if (!DEMO_TOOLS.contains(tool.name())) registry.unregister(tool.name());
+            }
+        }
+
         // 权限检查器
         permChecker = new PermissionChecker(PermissionMode.DEFAULT, Path.of(workDir));
 
@@ -256,6 +277,11 @@ public class RemoteServer {
         agent.setChecker(permChecker);
         agent.setWorkDir(workDir);
         agent.setSessionId(sessionId);
+        if (demoGuard.enabled()) {
+            agent.setMaxIterations(demoGuard.maxLlmCallsPerRequest());
+            agent.setLlmCallBudget(demoGuard::reserveLlmCall);
+            agent.setMaxOutputRecoveryEnabled(false);
+        }
 
         // 通知函数：排空团队邮箱和任务通知
         agent.setNotificationFn(() -> {
@@ -272,6 +298,7 @@ public class RemoteServer {
 
         // 工具名过滤器（团队协调模式）
         agent.setToolNameFilter(name -> {
+            if (demoGuard.enabled()) return DEMO_TOOLS.contains(name);
             if (!enableCoordinatorMode) return true;
             return com.mewcode.teams.Coordinator.isCoordinatorTool(name);
         });
@@ -285,7 +312,7 @@ public class RemoteServer {
 
         // Hook 引擎
         hookEngine = new HookEngine();
-        if (hookConfigs != null && !hookConfigs.isEmpty()) {
+        if (!demoGuard.enabled() && hookConfigs != null && !hookConfigs.isEmpty()) {
             List<HookEngine.Hook> hooks = hookConfigs.stream().map(hc -> {
                 HookEngine.EventName event = parseEventName(hc.getEvent());
                 HookEngine.ActionType actionType = parseActionType(hc.getType());
@@ -316,7 +343,7 @@ public class RemoteServer {
     // ────────────────────────────────────────────────────────────────────
 
     private void initMcpServers() {
-        if (mcpConfigs == null || mcpConfigs.isEmpty()) return;
+        if (demoGuard.enabled() || mcpConfigs == null || mcpConfigs.isEmpty()) return;
 
         try {
             mcpManager = new McpManager(mcpConfigs);
@@ -367,7 +394,7 @@ public class RemoteServer {
                     if (data instanceof Map<?, ?> d) {
                         String content = (String) d.get("content");
                         // 用虚拟线程处理用户消息，避免阻塞 WS 读循环
-                        Thread.startVirtualThread(() -> handleUserMessage(content));
+                        Thread.startVirtualThread(() -> handleUserMessage(ctx, content));
                     }
                 }
                 case "permission_response" -> {
@@ -404,19 +431,38 @@ public class RemoteServer {
     // 用户消息处理
     // ────────────────────────────────────────────────────────────────────
 
-    private void handleUserMessage(String content) {
-        if (streaming) return;
+    private void handleUserMessage(WsContext ctx, String content) {
+        if (streaming) {
+            send(ctx, Map.of("type", "error", "data",
+                    Map.of("message", "演示环境正在处理另一个请求，请稍后再试。")));
+            return;
+        }
 
         content = content != null ? content.strip() : "";
         if (content.isEmpty()) return;
 
         // 斜杠命令处理
         if (content.startsWith("/")) {
+            if (demoGuard.enabled() && !content.equals("/clear") && !content.equals("/help")) {
+                send(ctx, Map.of("type", "error", "data",
+                        Map.of("message", "公开演示环境仅开放 /clear 和 /help 命令。")));
+                return;
+            }
             handleSlashCommand(content);
             return;
         }
 
-        streaming = true;
+        DemoUsageGuard.Decision decision = demoGuard.allowRequest(clientId(ctx), content);
+        if (!decision.allowed()) {
+            send(ctx, Map.of("type", "error", "data", Map.of("message", decision.message())));
+            return;
+        }
+
+        if (!beginStreaming()) {
+            send(ctx, Map.of("type", "error", "data",
+                    Map.of("message", "演示环境正在处理另一个请求，请稍后再试。")));
+            return;
+        }
         streamThread = Thread.currentThread();
         String workDir = System.getProperty("user.dir");
         SessionManager.saveMessage(workDir, sessionId, "user", content);
@@ -435,7 +481,7 @@ public class RemoteServer {
         try {
             consumeAgentEvents();
         } finally {
-            streaming = false;
+            endStreaming();
             streamThread = null;
             agentQueue = null;
         }
@@ -508,7 +554,7 @@ public class RemoteServer {
                     if (!args.isEmpty()) displayText += " " + args;
 
                     // PROMPT 命令生成 prompt 注入给 Agent
-                    streaming = true;
+                    if (!beginStreaming()) return;
                     streamThread = Thread.currentThread();
                     String workDir = System.getProperty("user.dir");
                     SessionManager.saveMessage(workDir, sessionId, "user", displayText);
@@ -525,7 +571,7 @@ public class RemoteServer {
                     try {
                         consumeAgentEvents();
                     } finally {
-                        streaming = false;
+                        endStreaming();
                         streamThread = null;
                         agentQueue = null;
                     }
@@ -604,7 +650,7 @@ public class RemoteServer {
 
         // 带参数直接发给 Agent
         if (args != null && !args.isEmpty()) {
-            streaming = true;
+            if (!beginStreaming()) return;
             streamThread = Thread.currentThread();
             SessionManager.saveMessage(workDir, sessionId, "user", "/plan " + args);
             conversation.addUserMessage(args);
@@ -615,7 +661,7 @@ public class RemoteServer {
             try {
                 consumeAgentEvents();
             } finally {
-                streaming = false;
+                endStreaming();
                 streamThread = null;
                 agentQueue = null;
             }
@@ -899,6 +945,69 @@ public class RemoteServer {
         } catch (JsonProcessingException e) {
             System.err.println("[ws] JSON serialize error: " + e.getMessage());
         }
+    }
+
+    private void send(WsContext ctx, Map<String, Object> msg) {
+        try {
+            ctx.send(MAPPER.writeValueAsString(msg));
+        } catch (Exception e) {
+            System.err.println("[ws] send error: " + e.getMessage());
+        }
+    }
+
+    private static String clientId(WsContext ctx) {
+        String forwarded = ctx.header("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",", 2)[0].strip();
+        }
+        return ctx.host();
+    }
+
+    private static void configureBasicAuth(Javalin app) {
+        if (!authRequired()) return;
+        expectedAuthorizationHeader(); // Fail fast on incomplete configuration.
+        app.before(ctx -> {
+            if ("/health".equals(ctx.path())) return;
+            if (!authorizationMatches(ctx.header("Authorization"))) {
+                ctx.header("WWW-Authenticate", "Basic realm=\"MewCode Demo\"");
+                throw new UnauthorizedResponse("Authentication required");
+            }
+        });
+    }
+
+    private static boolean authorizationMatches(String authorization) {
+        if (!authRequired()) return true;
+        byte[] actual = authorization == null
+                ? new byte[0]
+                : authorization.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expectedAuthorizationHeader(), actual);
+    }
+
+    private static boolean authRequired() {
+        return Boolean.parseBoolean(System.getenv().getOrDefault(
+                "REMOTE_UI_REQUIRE_AUTH", "false"));
+    }
+
+    private static byte[] expectedAuthorizationHeader() {
+        String username = System.getenv("REMOTE_UI_USERNAME");
+        String password = System.getenv("REMOTE_UI_PASSWORD");
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException(
+                    "REMOTE_UI_USERNAME and REMOTE_UI_PASSWORD are required when auth is enabled");
+        }
+        return ("Basic " + Base64.getEncoder().encodeToString(
+                (username + ":" + password).getBytes(StandardCharsets.UTF_8)))
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private synchronized boolean beginStreaming() {
+        if (streaming) return false;
+        streaming = true;
+        return true;
+    }
+
+    private synchronized void endStreaming() {
+        streaming = false;
     }
 
     // ────────────────────────────────────────────────────────────────────

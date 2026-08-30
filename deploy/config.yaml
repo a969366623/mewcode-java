@@ -6,6 +6,7 @@ providers:
     base_url: https://api.deepseek.com
     model: deepseek-v4-flash
     context_window: 1000000
+    max_output_tokens: 1500
 
 # Keep this demo conservative: tools request confirmation from the web UI.
 permission_mode: default

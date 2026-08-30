@@ -10,7 +10,8 @@ WORKDIR /app
 COPY --from=build /workspace/build/libs/mewcode.jar /app/mewcode.jar
 COPY deploy/config.yaml /app/deploy/config.yaml
 
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0" \
+    DEMO_MODE="true"
 EXPOSE 18888
 
 CMD ["sh", "-c", "exec java $JAVA_OPTS -jar /app/mewcode.jar --remote=:${PORT:-18888} /app/deploy/config.yaml"]

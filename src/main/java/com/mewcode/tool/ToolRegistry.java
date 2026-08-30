@@ -46,6 +46,11 @@ public class ToolRegistry {
         return tools.get(name);
     }
 
+    public void unregister(String name) {
+        tools.remove(name);
+        discoveredTools.remove(name);
+    }
+
     public List<Tool> listTools() {
         return List.copyOf(tools.values());
     }

@@ -6,6 +6,7 @@
 package com.mewcode.agent;
 
 import com.mewcode.config.ProviderConfig;
+import com.mewcode.compact.ContextCompactor;
 import com.mewcode.conversation.ConversationManager;
 import com.mewcode.conversation.ThinkingBlock;
 import com.mewcode.conversation.ToolResultBlock;
@@ -56,6 +57,8 @@ public class Agent {
      * 让调度指引在工具收窄的同时出现，并在 Team 拆除后一同消失。
      */
     private java.util.function.BooleanSupplier coordinatorActiveFn;
+    private java.util.function.IntPredicate llmCallBudget;
+    private boolean maxOutputRecoveryEnabled = true;
     private String instructions = "";
     private String memoryContent = "";
 
@@ -104,6 +107,8 @@ public class Agent {
 
     public void setToolNameFilter(java.util.function.Predicate<String> filter) { this.toolNameFilter = filter; }
     public void setCoordinatorActiveFn(java.util.function.BooleanSupplier fn) { this.coordinatorActiveFn = fn; }
+    public void setLlmCallBudget(java.util.function.IntPredicate budget) { this.llmCallBudget = budget; }
+    public void setMaxOutputRecoveryEnabled(boolean enabled) { this.maxOutputRecoveryEnabled = enabled; }
     public void setInstructions(String instructions) { this.instructions = instructions; }
     public void setMemoryContent(String memoryContent) { this.memoryContent = memoryContent; }
     public void setMemoryRecallFuture(CompletableFuture<String> future) {
@@ -219,6 +224,19 @@ public class Agent {
             } catch (Exception ignored) {}
 
             var tools = iterToolSchemas;
+            if (llmCallBudget != null) {
+                ContextCompactor.UsageAnchor anchor = conv.hasUsageAnchor()
+                        ? new ContextCompactor.UsageAnchor(
+                                conv.getBaselineTokens(), conv.getAnchorCount())
+                        : null;
+                int estimatedTokens = ContextCompactor.currentTokens(conv.getMessages(), anchor)
+                        + maxOutput;
+                if (!llmCallBudget.test(estimatedTokens)) {
+                    putSafe(queue, new AgentEvent.ErrorEvent(
+                            "今日演示 Token 额度已用完，请明天再试。"));
+                    break;
+                }
+            }
             var streamQueue = client.stream(conv, tools);
 
             // Consume stream events, collect tool calls
@@ -319,7 +337,7 @@ public class Agent {
             putSafe(queue, new AgentEvent.UsageEvent(totalInput, totalOutput));
 
             // Max tokens handling
-            if ("max_tokens".equals(stopReason)) {
+            if ("max_tokens".equals(stopReason) && maxOutputRecoveryEnabled) {
                 if (!maxTokensEscalated) {
                     maxTokensEscalated = true;
                     client.setMaxOutputTokens(MAX_TOKENS_CEILING);
