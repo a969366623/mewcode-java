@@ -41,7 +41,7 @@ import com.mewcode.tui.dialog.AskUserDialog;
 import com.mewcode.worktree.WorktreeManager;
 
 import io.javalin.Javalin;
-import io.javalin.http.UnauthorizedResponse;
+import io.javalin.http.Context;
 import io.javalin.websocket.WsContext;
 
 import java.nio.charset.StandardCharsets;
@@ -49,6 +49,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
@@ -110,6 +111,9 @@ public class RemoteServer {
     private volatile String mcpInstructions = "";
     private final boolean enableCoordinatorMode;
     private final boolean forkDisabled;
+    private final boolean requireRemoteAuth;
+    private final String remoteUsername;
+    private final String remotePassword;
 
     public RemoteServer(List<ProviderConfig> providers, List<McpServerConfig> mcpConfigs,
                         List<HookConfig> hookConfigs, String addr, boolean enableCoordinatorMode,
@@ -120,6 +124,9 @@ public class RemoteServer {
         this.addr = addr;
         this.enableCoordinatorMode = enableCoordinatorMode;
         this.forkDisabled = forkDisabled;
+        this.requireRemoteAuth = Boolean.parseBoolean(System.getenv("REMOTE_UI_REQUIRE_AUTH"));
+        this.remoteUsername = System.getenv("REMOTE_UI_USERNAME");
+        this.remotePassword = System.getenv("REMOTE_UI_PASSWORD");
     }
 
     /**
@@ -127,6 +134,7 @@ public class RemoteServer {
      * 初始化 Agent 后监听指定地址，阻塞直到服务器关闭。
      */
     public void run() throws Exception {
+        validateRemoteAuth();
         // 初始化 Agent（复刻 TUI 的 initializeProvider 流程）
         initAgent();
         // 连接 MCP 服务器
@@ -135,9 +143,9 @@ public class RemoteServer {
         // 解析监听地址（格式 ":18888" 或 "0.0.0.0:18888"）
         int port = parsePort(addr);
 
-        Javalin app = Javalin.create();
-        configureBasicAuth(app);
-        app.get("/health", ctx -> ctx.result("ok"))
+        Javalin app = Javalin.create()
+                .before(this::authenticateRequest)
+                .get("/health", ctx -> ctx.result("ok"))
                 .get("/", ctx -> {
                     ctx.contentType("text/html; charset=utf-8");
                     ctx.result(WebContent.INDEX_HTML);
@@ -172,6 +180,49 @@ public class RemoteServer {
 
         // 阻塞主线程，让服务器持续运行
         Thread.currentThread().join();
+    }
+
+    /**
+     * Remote mode can execute agent tools. A public deployment must therefore
+     * opt in to authentication explicitly through environment variables.
+     */
+    private void validateRemoteAuth() {
+        if (requireRemoteAuth && (isBlank(remoteUsername) || isBlank(remotePassword))) {
+            throw new IllegalStateException(
+                    "REMOTE_UI_REQUIRE_AUTH=true requires REMOTE_UI_USERNAME and REMOTE_UI_PASSWORD");
+        }
+    }
+
+    private void authenticateRequest(Context ctx) {
+        if (!requireRemoteAuth) return;
+
+        String authorization = ctx.header("Authorization");
+        if (authorization != null && authorization.startsWith("Basic ")) {
+            try {
+                String decoded = new String(Base64.getDecoder().decode(authorization.substring(6)),
+                        StandardCharsets.UTF_8);
+                int separator = decoded.indexOf(':');
+                if (separator >= 0
+                        && constantTimeEquals(remoteUsername, decoded.substring(0, separator))
+                        && constantTimeEquals(remotePassword, decoded.substring(separator + 1))) {
+                    return;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Treat malformed headers as unauthorized.
+            }
+        }
+
+        ctx.header("WWW-Authenticate", "Basic realm=\"MewCode Remote\", charset=\"UTF-8\"");
+        ctx.status(401).result("Authentication required");
+    }
+
+    private static boolean constantTimeEquals(String expected, String actual) {
+        return MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
+                actual.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -961,18 +1012,6 @@ public class RemoteServer {
             return forwarded.split(",", 2)[0].strip();
         }
         return ctx.host();
-    }
-
-    private static void configureBasicAuth(Javalin app) {
-        if (!authRequired()) return;
-        expectedAuthorizationHeader(); // Fail fast on incomplete configuration.
-        app.before(ctx -> {
-            if ("/health".equals(ctx.path())) return;
-            if (!authorizationMatches(ctx.header("Authorization"))) {
-                ctx.header("WWW-Authenticate", "Basic realm=\"MewCode Demo\"");
-                throw new UnauthorizedResponse("Authentication required");
-            }
-        });
     }
 
     private static boolean authorizationMatches(String authorization) {
